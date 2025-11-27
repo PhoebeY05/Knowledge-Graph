@@ -58,19 +58,19 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-  if (!graphData.nodes.length || !fgRef.current) return;
+    if (!graphData.nodes.length || !fgRef.current) return;
 
-  const fg = fgRef.current;
+    const fg = fgRef.current;
 
-  // Force settings
-  fg.d3Force("link")?.distance(150);
-  fg.d3Force("charge")?.strength(-500);
+    // Force settings
+    fg.d3Force("link")?.distance(150);
+    fg.d3Force("charge")?.strength(-500);
 
-  // Wait a short time for simulation to settle
-  setTimeout(() => {
-    fg.zoomToFit(40); // 40px padding
-  }, 100); // 100ms is enough for initial layout
-}, [graphData]);
+    // Wait a short time for simulation to settle
+    setTimeout(() => {
+      fg.zoomToFit(500); // 40px padding
+    }, 100); // 100ms is enough for initial layout
+  }, [graphData]);
 
 
   useEffect(() => {
@@ -79,24 +79,8 @@ const App = () => {
     fgRef.current.d3ReheatSimulation(); // restarts simulation so nodes move apart
   }, [graphData]);
 
-  const handleRefresh = async () => {
-    setLoading(true);
-    await fetchGraph();
-    setLoading(false);
-  };
-
   return (
-    <div className="h-screen w-screen bg-gradient-to-br from-gray-100 to-gray-200 flex flex-col">
-      <header className="p-4 bg-white shadow-md flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Knowledge Graph</h1>
-        <button
-          onClick={handleRefresh}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
-        >
-          Refresh
-        </button>
-      </header>
-
+    <div className="flex flex-col h-full">
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-gray-600 text-lg font-medium">
           Loading graph...
@@ -121,29 +105,54 @@ const App = () => {
             const words = label.split(" ");
             const lines: string[] = [];
             let currentLine = "";
+            let longestLineWidth = 0; // Track longest line
 
             words.forEach((word: string) => {
               const testLine = currentLine ? `${currentLine} ${word}` : word;
-              if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+              const testWidth = ctx.measureText(testLine).width;
+
+              if (testWidth > maxWidth && currentLine) {
                 lines.push(currentLine);
+                longestLineWidth = Math.max(longestLineWidth, ctx.measureText(currentLine).width);
                 currentLine = word;
               } else {
                 currentLine = testLine;
               }
             });
-            if (currentLine) lines.push(currentLine);
 
-            // Compute radius
-            const radius = Math.max(15, (lines[0].length * fontSize) / 2, (lines.length * fontSize) / 1.5);
+            if (currentLine) {
+              lines.push(currentLine);
+              longestLineWidth = Math.max(longestLineWidth, ctx.measureText(currentLine).width);
+            }
+
+            // Compute radius based on longest line
+            const radius = Math.max(15, longestLineWidth / 2 + 5); // +5 for padding
+
+
+            // Define a palette of good contrasting colors
+            const colors = [
+              "#34d399", // green
+              "#60a5fa", // blue
+              "#fbbf24", // yellow
+              "#f87171", // red
+              "#a78bfa", // purple
+              "#f472b6"  // pink
+            ];
+
+            // Pick a color based on node id (so it's consistent)
+            const colorIndex = Math.abs(
+              [...String(node.id || "")].reduce((sum, char) => sum + char.charCodeAt(0), 0)
+            ) % colors.length;
+
+            ctx.fillStyle = colors[colorIndex];
 
             // Draw circle
-            ctx.fillStyle = node.color || "#10b981";
             ctx.beginPath();
             ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI);
             ctx.fill();
 
             // Draw text lines
-            ctx.fillStyle = "#fff";
+            ctx.fillStyle = "#000";
             lines.forEach((line, i) => {
               ctx.fillText(line, node.x ?? 0, (node.y ?? 0) + (i - lines.length / 2 + 0.5) * fontSize);
             });
