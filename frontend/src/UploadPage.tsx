@@ -16,6 +16,7 @@ const UploadPage = () => {
     const [uploading, setUploading] = useState(false);
     const [successMsg, setSuccessMsg] = useState("");
     const [errorMsg, setErrorMsg] = useState("");
+    const [redirecting, setRedirecting] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -40,15 +41,34 @@ const UploadPage = () => {
         setErrorMsg("");
 
         try {
-            await axios.post("http://localhost:8000/upload", formData, {
+            const res = await axios.post("http://localhost:8000/upload", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
-            setSuccessMsg("File uploaded successfully!");
-            setFile(null);
-            if (fileInputRef.current) fileInputRef.current.value = "";
-        } catch (err) {
+
+            // Consider any 2xx as success
+            if (res.status >= 200 && res.status < 300) {
+                setSuccessMsg("File uploaded successfully! Redirecting...");
+                setFile(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+                if (!redirecting) {
+                    setRedirecting(true);
+                    // Redirect immediately and replace history entry
+                    window.location.replace("/graph");
+                    return;
+                }
+            } else {
+                // Non-2xx -> error
+                setErrorMsg(`Upload failed: ${res.status}`);
+                return;
+            }
+        } catch (err: any) {
             console.error(err);
-            setErrorMsg("Failed to upload file.");
+            setErrorMsg(
+                err?.response?.data?.message ||
+                err?.message ||
+                "Failed to upload file."
+            );
+            return;
         } finally {
             setUploading(false);
         }

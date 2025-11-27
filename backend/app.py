@@ -28,6 +28,10 @@ NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+def reset_neo4j():
+    with driver.session() as session:
+        session.run("MATCH (n) DETACH DELETE n")
+    print("[INFO] Neo4j database reset: all nodes and relationships deleted.")
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -40,6 +44,7 @@ async def upload_file(file: UploadFile = File(...)):
     extracted_text = ocr_extract_text(file_path)
 
     # Step 2: Process text with ERNIE
+    reset_neo4j
     process_text_to_graph(extracted_text)
 
     # Return response

@@ -23,11 +23,6 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 # -----------------------------
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
-def reset_neo4j():
-    with driver.session() as session:
-        session.run("MATCH (n) DETACH DELETE n")
-    print("[INFO] Neo4j database reset: all nodes and relationships deleted.")
-
 
 def safe_parse_json(raw_output: str):
     """Extract JSON from ERNIE output safely, returns empty lists if parsing fails"""
@@ -134,7 +129,6 @@ def create_relations(tx, relations, entities):
 # Main pipeline
 # -----------------------------
 def process_text_to_graph(text: str):
-    reset_neo4j()
     print("[INFO] Extracting entities and relations from text...")
     result = extract_entities(text)
     entities = result['entities']
