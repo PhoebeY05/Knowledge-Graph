@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Neo4j Graph Viewer</title>
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    #graph { width: 100%; height: 600px; border: 1px solid lightgray; margin-top: 20px; }
+    #loading { display: none; font-weight: bold; color: blue; }
+  </style>
+</head>
+<body>
+  <h2>Upload PDF/Image</h2>
+  <input type="file" id="fileInput" />
+  <button onclick="uploadFile()">Upload</button>
+  <p id="loading">Processing... Please wait.</p>
+
+  <div id="graph"></div>
+
+  <script>
+    async function uploadFile() {
+      const input = document.getElementById('fileInput');
+      if (!input.files[0]) return alert("Please select a file!");
+
+      const loading = document.getElementById('loading');
+      loading.style.display = "block";
+
+      const formData = new FormData();
+      formData.append("file", input.files[0]);
+
+      try {
+        await fetch("http://127.0.0.1:8000/upload", {
+          method: "POST",
+          body: formData
+        });
+
+        // Fetch graph data after processing
+        const res = await fetch("http://127.0.0.1:8000/graph");
+        const data = await res.json();
+
+        const nodes = new vis.DataSet(data.nodes);
+        const edges = new vis.DataSet(data.edges);
+        const container = document.getElementById("graph");
+
+        new vis.Network(container, { nodes, edges }, {});
+
+      } catch (err) {
+        alert("Error: " + err);
+      } finally {
+        loading.style.display = "none";
+      }
+    }
+  </script>
+</body>
+</html>
