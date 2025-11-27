@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+env/
+pyvenv.cfg
+bin/
+include/
+lib/
+
+# Secrets
+.env
+.env.*
+
+# Build/output
+dist/
+build/
+*.log
+
+# Node (if any)
+node_modules/
+
+# App-specific artifacts
+uploads/

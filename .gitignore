@@ -1,0 +1,31 @@
+# Ignore node_modules and build directories
+node_modules/
+dist/
+build/
+
+# Ignore environment variable files
+.env
+.env.*
+
+# Ignore Python cache and virtual environment directories
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+
+# Ignore macOS specific files
+.DS_Store
+
+# Ensure backend is tracked (must come after any broad ignores like "*")
+!backend/**
+# But still ignore typical junk/secrets inside backend
+backend/.env
+backend/.env.*
+backend/.venv/
+backend/__pycache__/
+backend/.mypy_cache/
+backend/.pytest_cache/
+backend/.DS_Store
+backend/node_modules/
+backend/dist/
+backend/build/
