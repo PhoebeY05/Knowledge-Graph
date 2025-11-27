@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type LinkObject, type NodeObject } from 'react-force-graph-2d';
 
 type Node = { id: string; label: string };
@@ -7,11 +8,53 @@ type GraphNode = { id: string; text: string; value: number };
 type Link = { source: string; target: string; label: string };
 type GraphData = { nodes: GraphNode[]; links: Link[] };
 
+// Custom collide force without d3-force
+function makeCollisionForce(getRadius: (n: any) => number, strength = 0.8) {
+  let nodes: any[] = [];
+  function force(alpha: number) {
+    const n = nodes.length;
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i];
+      if (a.x == null || a.y == null) continue;
+      const ra = getRadius(a) || 0;
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j];
+        if (b.x == null || b.y == null) continue;
+        const rb = getRadius(b) || 0;
+
+        let dx = (b.x as number) - (a.x as number);
+        let dy = (b.y as number) - (a.y as number);
+        let dist2 = dx * dx + dy * dy;
+        if (dist2 === 0) {
+          dx = (Math.random() - 0.5) * 1e-6;
+          dy = (Math.random() - 0.5) * 1e-6;
+          dist2 = dx * dx + dy * dy;
+        }
+        const dist = Math.sqrt(dist2);
+        const minDist = ra + rb;
+        if (dist >= minDist) continue;
+
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const overlap = (minDist - dist);
+        const push = overlap * strength * alpha * 0.5; // split push between nodes
+
+        a.vx = (a.vx || 0) - nx * push;
+        a.vy = (a.vy || 0) - ny * push;
+        b.vx = (b.vx || 0) + nx * push;
+        b.vy = (b.vy || 0) + ny * push;
+      }
+    }
+  }
+  (force as any).initialize = (nds: any[]) => { nodes = nds || []; };
+  return force as any;
+}
+
 const GraphPage = () => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight - 64 });
-  const fgRef = useRef<ForceGraphMethods<NodeObject<GraphNode>, LinkObject<GraphNode, Link>> | undefined>(undefined);
+  const fgRef = useRef<ForceGraphMethods<any, any> | undefined>(undefined);
 
   // Fetch graph data
   const fetchGraph = async () => {
@@ -38,6 +81,20 @@ const GraphPage = () => {
     }
   };
 
+  const handleClick = useCallback((node: NodeObject) => {
+    const distance = 40;
+    const distRatio = 1 + distance / Math.hypot(node.x ?? 0, node.y ?? 0);
+
+    // Fix operator precedence: apply distRatio to node.x/y
+    fgRef.current?.centerAt(
+      (node.x ?? 0) * distRatio,
+      (node.y ?? 0) * distRatio
+    );
+
+    fgRef.current?.zoom(5);
+  }, [fgRef]);
+
+
   // Initial load
   useEffect(() => {
     let isMounted = true;
@@ -57,26 +114,38 @@ const GraphPage = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Increase repulsion only for connected nodes (keep global charge the same)
   useEffect(() => {
     if (!graphData.nodes.length || !fgRef.current) return;
 
-    const fg = fgRef.current;
+    const fg: any = fgRef.current;
 
-    // Force settings
-    fg.d3Force("link")?.distance(150);
-    fg.d3Force("charge")?.strength(-500);
+    // Keep clusters tight with stronger/shorter link springs
+    const linkForce: any = fg.d3Force("link");
+    if (linkForce) {
+      linkForce.distance(90).strength(1.6); // tighter + stronger links
+    }
 
-    // Wait a short time for simulation to settle
-    setTimeout(() => {
-      fg.zoomToFit(500); // 40px padding
-    }, 100); // 100ms is enough for initial layout
-  }, [graphData]);
+    // Slightly stronger, wider-range repulsion to separate clusters more
+    const charge: any = fg.d3Force("charge");
+    if (charge) {
+      charge
+        .strength(-60)   // was -30
+        .distanceMax(900) // was 500
+        .distanceMin(1);
+    }
 
+    // Collision separates overlapping nodes without breaking clusters (use capped physics radius)
+    fg.d3Force(
+      "collide",
+      makeCollisionForce((n: any) => n.collideRadiusPhysics || 18, 0.8)
+    );
 
-  useEffect(() => {
-    if (!graphData.nodes.length || !fgRef.current) return;
+    // Remove any previous custom forces that may counteract clustering
+    fg.d3Force("link-sep", null);
+    fg.d3Force("link-repel", null);
 
-    fgRef.current.d3ReheatSimulation(); // restarts simulation so nodes move apart
+    fg.d3ReheatSimulation();
   }, [graphData]);
 
   return (
@@ -91,26 +160,36 @@ const GraphPage = () => {
           graphData={graphData}
           width={dimensions.width}
           height={dimensions.height}
+          onEngineStop={() => fgRef.current?.zoomToFit(400)}
 
           // Draw nodes as circles with wrapped text
           nodeCanvasObject={(node: NodeObject, ctx: CanvasRenderingContext2D, globalScale: number) => {
             const label = (node as NodeObject).text || node.id;
-            const fontSize = 12 / globalScale;
+
+            // Tunables
+            const BASE_FONT_PX = 12;
+            const WRAP_WIDTH_PX = 50;
+            const PADDING_PX = 1;
+            const MIN_RADIUS_PX = 10;
+            const RADIUS_SCALE = 1.25;
+            const PHYSICS_COLLIDE_MAX_WORLD = 30; // cap collision radius to keep clusters intact
+
+            // Keep text at constant screen size
+            const fontSize = BASE_FONT_PX / globalScale;
             ctx.font = `${fontSize}px Sans-Serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
-            // Wrap text
-            const maxWidth = 100 / globalScale;
+            // Wrap text (measure in world units with current font)
+            const maxWidth = WRAP_WIDTH_PX / globalScale;
             const words = label.split(" ");
             const lines: string[] = [];
             let currentLine = "";
-            let longestLineWidth = 0; // Track longest line
+            let longestLineWidth = 0;
 
-            words.forEach((word: string) => {
+            for (const word of words) {
               const testLine = currentLine ? `${currentLine} ${word}` : word;
               const testWidth = ctx.measureText(testLine).width;
-
               if (testWidth > maxWidth && currentLine) {
                 lines.push(currentLine);
                 longestLineWidth = Math.max(longestLineWidth, ctx.measureText(currentLine).width);
@@ -118,50 +197,52 @@ const GraphPage = () => {
               } else {
                 currentLine = testLine;
               }
-            });
-
+            }
             if (currentLine) {
               lines.push(currentLine);
               longestLineWidth = Math.max(longestLineWidth, ctx.measureText(currentLine).width);
             }
 
-            // Compute radius based on longest line
-            const radius = Math.max(15, longestLineWidth / 2 + 5); // +5 for padding
+            // Compute radius in world units so it maps to constant px on screen
+            const lineHeight = fontSize * 1.1;
+            const textWidthWorld = Math.max(1, longestLineWidth);
+            const textHeightWorld = Math.max(lineHeight, lines.length * lineHeight);
+            const paddingWorld = PADDING_PX / globalScale;
+            const minRadiusWorld = MIN_RADIUS_PX / globalScale;
 
+            const requiredRadiusWorld = Math.hypot(textWidthWorld / 2, textHeightWorld / 2) + paddingWorld;
+            const radius = Math.max(minRadiusWorld, requiredRadiusWorld) * RADIUS_SCALE;
 
-            // Define a palette of good contrasting colors
-            const colors = [
-              "#34d399", // green
-              "#60a5fa", // blue
-              "#fbbf24", // yellow
-              "#f87171", // red
-              "#a78bfa", // purple
-              "#f472b6"  // pink
-            ];
+            // Expose visual and physics collide radii (physics has a cap to avoid breaking clusters)
+            (node as any).collideRadius = radius;
+            (node as any).collideRadiusPhysics = Math.min(radius, PHYSICS_COLLIDE_MAX_WORLD);
 
-            // Pick a color based on node id (so it's consistent)
-            const colorIndex = Math.abs(
-              [...String(node.id || "")].reduce((sum, char) => sum + char.charCodeAt(0), 0)
-            ) % colors.length;
-
+            // Colors
+            const colors = ["#34d399", "#60a5fa", "#fbbf24", "#f87171", "#a78bfa", "#f472b6"];
+            const colorIndex = Math.abs([...String(node.id || "")].reduce((s, c) => s + c.charCodeAt(0), 0)) % colors.length;
             ctx.fillStyle = colors[colorIndex];
 
-            // Draw circle
+            // Draw node
             ctx.beginPath();
             ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI);
             ctx.fill();
 
-            // Draw text lines
+            // Draw wrapped text (already compensates zoom via fontSize)
             ctx.fillStyle = "#000";
             lines.forEach((line, i) => {
-              ctx.fillText(line, node.x ?? 0, (node.y ?? 0) + (i - lines.length / 2 + 0.5) * fontSize);
+              ctx.fillText(line, node.x ?? 0, (node.y ?? 0) + (i - lines.length / 2 + 0.5) * lineHeight);
             });
           }}
           nodeLabel={(node: NodeObject) => (node as NodeObject).text || node.id}
+          onNodeDragEnd={node => {
+            node.fx = node.x;
+            node.fy = node.y;
+          }}
+          onNodeClick={handleClick}
 
           // Link arrows and labels
-          linkDirectionalArrowLength={6}
-          linkDirectionalArrowRelPos={1}
+          linkDirectionalArrowLength={2}
+          linkDirectionalArrowRelPos={0.75}
           linkLabel={(link: LinkObject) => (link as LinkObject).label}
           linkCanvasObjectMode={() => "after"}
           linkCanvasObject={(link: LinkObject, ctx: CanvasRenderingContext2D) => {
@@ -172,7 +253,7 @@ const GraphPage = () => {
             const x = ((start.x ?? 0) + (end.x ?? 0)) / 2;
             const y = ((start.y ?? 0) + (end.y ?? 0)) / 2;
 
-            ctx.font = `10px Sans-Serif`;
+            ctx.font = `10px`;
             ctx.fillStyle = "#000";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
