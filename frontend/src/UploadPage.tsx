@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,7 +54,7 @@ const UploadPage = () => {
                 if (!redirecting) {
                     setRedirecting(true);
                     // Redirect immediately and replace history entry
-                    window.location.replace("/graph");
+                    window.location.replace("/graph/" + res.data.title);
                     return;
                 }
             } else {

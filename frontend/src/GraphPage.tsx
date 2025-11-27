@@ -2,6 +2,7 @@
 import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ForceGraph2D, { type ForceGraphMethods, type LinkObject, type NodeObject } from 'react-force-graph-2d';
+import { useParams } from 'react-router-dom';
 
 type Node = { id: string; label: string };
 type GraphNode = { id: string; text: string; value: number };
@@ -51,6 +52,7 @@ function makeCollisionForce(getRadius: (n: any) => number, strength = 0.8) {
 }
 
 const GraphPage = () => {
+  const { title } = useParams();
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(true);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight - 64 });
@@ -59,7 +61,7 @@ const GraphPage = () => {
   // Fetch graph data
   const fetchGraph = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/graph");
+      const res = await axios.get("http://localhost:8000/graph/?title=" + title);
       const data = res.data;
 
       const nodes: GraphNode[] = data.nodes.map((node: Node) => ({

@@ -11,7 +11,7 @@ function App() {
 				{/* constrained, responsive content area that will be centered */}
 				<Routes>
 					<Route path="/" element={<UploadPage />} />
-					<Route path="/graph" element={<GraphPage />} />
+					<Route path="/graph/:title" element={<GraphPage />} />
 				</Routes>
 			</div>
 		</BrowserRouter>

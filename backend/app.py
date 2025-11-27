@@ -45,22 +45,24 @@ async def upload_file(file: UploadFile = File(...)):
 
     # Step 2: Process text with ERNIE
     reset_neo4j
-    process_text_to_graph(extracted_text)
+    database_title = process_text_to_graph(extracted_text)
 
     # Return response
     return {
-        "filename": file.filename,
+        "title": database_title,
         "text_preview": extracted_text[:500],  # first 500 chars
         "message": "OCR + ERNIE processing complete!"
     }
 
 @app.get("/graph")
-def get_graph():
-    query = """
+def get_graph(title: str):
+    title = title.strip()
+    print(f"[INFO] Querying Neo4j for graph '{title}'...")
+    query = f"""
     MATCH (a:Entity)-[r:RELATION]->(b:Entity)
     RETURN a.canonical AS from, r.type AS type, b.canonical AS to
     """
-    with driver.session() as session:
+    with driver.session(database=title) as session:
         results = session.run(query)
         nodes = {}
         edges = []

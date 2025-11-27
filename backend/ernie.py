@@ -1,11 +1,12 @@
+import json
 import os
 import re
-import json
-from dotenv import load_dotenv
-import requests
 from datetime import datetime, timezone
-from neo4j import GraphDatabase
 from textwrap import wrap
+
+import requests
+from dotenv import load_dotenv
+from neo4j import GraphDatabase
 
 # -----------------------------
 # Load environment variables
@@ -23,6 +24,18 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 # -----------------------------
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
+def _safe_db_name(title: str) -> str:
+    # Neo4j db name: simple ascii letters/numbers, dots and dashes only
+    name = (title or "graph").lower()
+    # replace anything not [a-z0-9.-] with '-'
+    name = re.sub(r"(_|-|\s)+", " ", name).title().replace(" ", "")
+    # collapse multiple '-' and remove leading/trailing separators
+    name = re.sub(r"-+", "-", name).strip("-.")
+    # must start with a letter
+    if not name or not name[0].isalpha():
+        name = f"g-{name}" if name else "g-default"
+    # reasonable max length
+    return name[:60]
 
 def safe_parse_json(raw_output: str):
     """Extract JSON from ERNIE output safely, returns empty lists if parsing fails"""
@@ -44,31 +57,33 @@ def extract_entities(text: str) -> dict:
         "x-bce-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
     }
 
+
     prompt = f"""
-Extract entities and relations from the following text. Return JSON only in this format:
+        Extract entities and relations from the following text. Return JSON only in this format:
 
-{{
-"entities": [
-    {{
-    "id": "E1",
-    "type": "Organization | Person | Date | Money | Clause | Term",
-    "text": "...",
-    "canonical": "..."
-    }}
-],
-"relations": [
-    {{
-    "from": "E1",
-    "to": "E2",
-    "type": "employs | owes | mentions | amends",
-    "confidence": 0.0,
-    "evidence_span": "..."
-    }}
-]
-}}
+        {{
+        "title": "...",
+        "entities": [
+            {{
+            "id": "E1",
+            "type": "Organization | Person | Date | Money | Clause | Term | ...",
+            "text": "...",
+            "canonical": "..."
+            }}
+        ],
+        "relations": [
+            {{
+            "from": "E1",
+            "to": "E2",
+            "type": "employs | owes | mentions | amends | ...",
+            "confidence": 0.0,
+            "evidence_span": "..."
+            }}
+        ]
+        }}
 
-Text: "{text}"
-"""
+        Text: "{text}"
+        """
 
     payload = {
         "model": "ernie-3.5-8k",
@@ -107,10 +122,10 @@ def create_entities(tx, entities):
 def create_relations(tx, relations, entities):
     entity_map = {e['id']: e['canonical'] for e in entities}
     for r in relations:
-        from_canonical = entity_map.get(r['from'])
-        to_canonical = entity_map.get(r['to'])
+        from_canonical = entity_map.get(r.get('from'))
+        to_canonical = entity_map.get(r.get('to'))
         if not from_canonical or not to_canonical:
-            continue  # skip relations if entity missing
+            continue
         tx.run(
             """
             MATCH (a:Entity {canonical: $from_canonical})
@@ -120,9 +135,9 @@ def create_relations(tx, relations, entities):
             """,
             from_canonical=from_canonical,
             to_canonical=to_canonical,
-            type=r['type'],
-            confidence=r['confidence'],
-            evidence=r['evidence_span']
+            type=r.get('type', 'related'),
+            confidence=r.get('confidence', 0.0),
+            evidence=r.get('evidence_span', '')
         )
 
 # -----------------------------
@@ -131,16 +146,27 @@ def create_relations(tx, relations, entities):
 def process_text_to_graph(text: str):
     print("[INFO] Extracting entities and relations from text...")
     result = extract_entities(text)
-    entities = result['entities']
-    relations = result['relations']
+    entities = result.get('entities', [])
+    relations = result.get('relations', [])
+    title = result.get('title', 'graph')
     print(f"[INFO] Extracted {len(entities)} unique entities and {len(relations)} relations.")
 
-    with driver.session() as session:
+    db_name = _safe_db_name(title)
+
+    # Ensure database exists (must run from 'system' db)
+    try:
+        with driver.session(database="system") as sys_sess:
+            sys_sess.run(f"CREATE DATABASE `{db_name}` IF NOT EXISTS WAIT")
+            print(f"[INFO] Database '{db_name}' ensured.")
+    except Exception as e:
+        print(f"[WARN] Could not ensure database '{db_name}': {e}. Falling back to default database.")
+        db_name = None  # use driver default db
+
+    with driver.session(database=db_name) as session:
         session.execute_write(create_entities, entities)
         session.execute_write(create_relations, relations, entities)
         print("[INFO] Entities and relations ingested into Neo4j.")
 
-        # Query and print results
         print("\n[INFO] Querying Neo4j for verification...\n")
         results = session.run("""
             MATCH (a:Entity)-[r:RELATION]->(b:Entity)
@@ -148,3 +174,4 @@ def process_text_to_graph(text: str):
         """)
         for record in results:
             print(record)
+        return db_name or "neo4j"
