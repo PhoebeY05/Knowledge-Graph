@@ -37,6 +37,33 @@ def _safe_db_name(title: str) -> str:
     # reasonable max length
     return name[:60]
 
+def _unique_db_name(base_name: str) -> str:
+    """
+    Ensure database name is unique by appending a numeric suffix (-2, -3, ...) if needed.
+    Checks existing databases via SHOW DATABASES in the system db.
+    """
+    try:
+        with driver.session(database="system") as sys_sess:
+            existing = set()
+            res = sys_sess.run("SHOW DATABASES YIELD name RETURN name")
+            for r in res:
+                existing.add(r["name"])
+    except Exception:
+        # If SHOW DATABASES fails, just return base_name and let creation handle conflicts
+        return base_name
+
+    if base_name not in existing:
+        return base_name
+
+    # Generate suffixes until an unused name is found; respect 60-char limit
+    idx = 2
+    while True:
+        candidate = f"{base_name}-{idx}"
+        candidate = candidate[:60]
+        if candidate not in existing:
+            return candidate
+        idx += 1
+
 def safe_parse_json(raw_output: str):
     """Extract JSON from ERNIE output safely, returns empty lists if parsing fails"""
     match = re.search(r"\{.*\}", raw_output, re.DOTALL)
@@ -61,6 +88,7 @@ def extract_entities(text: str) -> dict:
         Extract entities and relations from the following text. Return JSON only in this format:
 
         {{
+        "title": "...",
         "entities": [
             {{
             "id": "E1",
@@ -149,7 +177,9 @@ def process_text_to_graph(text: str):
     title = result.get('title', 'graph')
     print(f"[INFO] Extracted {len(entities)} unique entities and {len(relations)} relations.")
 
-    db_name = _safe_db_name(title)
+    # Compute a valid base db name and uniquify it if necessary
+    base_name = _safe_db_name(title)
+    db_name = _unique_db_name(base_name)
 
     try:
         with driver.session(database="system") as sys_sess:
@@ -157,7 +187,7 @@ def process_text_to_graph(text: str):
             print(f"[INFO] Database '{db_name}' ensured.")
     except Exception as e:
         print(f"[WARN] Could not ensure database '{db_name}': {e}. Falling back to default database.")
-        db_name = None
+        db_name = None  # use driver default db
 
     with driver.session(database=db_name) as session:
         session.execute_write(create_entities, entities)
@@ -171,4 +201,4 @@ def process_text_to_graph(text: str):
         """)
         for record in results:
             print(record)
-        return (db_name or "neo4j")  # return the actual db the frontend should query
+        return db_name or "neo4j"

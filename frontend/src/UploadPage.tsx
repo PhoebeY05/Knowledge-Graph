@@ -96,7 +96,7 @@ const UploadPage = () => {
                             </Alert>
                         )}
                         {errorMsg && (
-                            <Alert variant="destructive">
+                            <Alert variant="destructive" className="mb-4">
                                 <AlertDescription>{errorMsg}</AlertDescription>
                             </Alert>
                         )}
