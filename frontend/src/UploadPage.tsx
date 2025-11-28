@@ -150,7 +150,7 @@ const UploadPage = () => {
                   <ul className="mt-3 list-disc pl-5 text-sm md:text-base text-gray-700 space-y-1.5">
                     <li>Click the dropzone or the button to pick a file.</li>
                     <li>We’ll process the document and build the graph.</li>
-                    <li>Large files may take a few minutes to upload.</li>
+                    <li>Large files may take up to 30 minutes to upload.</li>
                   </ul>
                 </div>
 
