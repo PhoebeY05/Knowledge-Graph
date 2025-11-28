@@ -18,6 +18,7 @@ const UploadPage = () => {
     const [successMsg, setSuccessMsg] = useState("");
     const [errorMsg, setErrorMsg] = useState("");
     const [redirecting, setRedirecting] = useState(false);
+    const [isDragging, setIsDragging] = useState(false); // new drag state
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -29,6 +30,37 @@ const UploadPage = () => {
 
     const handleChooseFile = () => {
         fileInputRef.current?.click();
+    };
+
+    // Drag & Drop handlers
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDragging) setIsDragging(true);
+    };
+    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // When moving within children, relatedTarget may be null; be lenient
+        setIsDragging(false);
+    };
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const dt = e.dataTransfer;
+        if (!dt?.files?.length) return;
+        const dropped = dt.files[0];
+        if (dropped) {
+            setFile(dropped);
+            setSuccessMsg("");
+            setErrorMsg("");
+        }
     };
 
     const handleUpload = async () => {
@@ -109,6 +141,8 @@ const UploadPage = () => {
                             onChange={handleFileChange}
                             className="hidden"
                             disabled={uploading}
+                            // accept attribute optional; uncomment to restrict types:
+                            // accept=".pdf,.png,.jpg,.jpeg"
                         />
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12">
@@ -152,17 +186,26 @@ const UploadPage = () => {
                                     tabIndex={0}
                                     onClick={handleChooseFile}
                                     onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleChooseFile()}
-                                    className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300/70 bg-white p-12 md:p-16 text-center transition-colors hover:border-blue-600/60 cursor-pointer"
+                                    onDragEnter={handleDragEnter}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    className={[
+                                        "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white p-12 md:p-16 text-center transition-colors cursor-pointer",
+                                        isDragging ? "border-blue-600/80 bg-blue-50" : "border-gray-300/70 hover:border-blue-600/60",
+                                        uploading ? "opacity-60 pointer-events-none" : ""
+                                    ].join(" ")}
                                 >
                                     <div className="text-5xl md:text-6xl mb-4">📄</div>
                                     <div className="text-sm md:text-base text-gray-600">
-                                        Drag & drop your file here, or click to browse
+                                        {isDragging ? "Release to upload this file" : "Drag & drop your file here, or click to browse"}
                                     </div>
                                     <Button
                                         type="button"
                                         variant="secondary"
                                         className="mt-5"
                                         disabled={uploading}
+                                        onClick={handleChooseFile}
                                     >
                                         Choose file
                                     </Button>
