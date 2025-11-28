@@ -40,7 +40,6 @@ async def upload_file(file: UploadFile = File(...)):
     extracted_text = ocr_extract_text(file_path)
 
     # Step 2: Process text with ERNIE
-    reset_neo4j
     database_title = process_text_to_graph(extracted_text)
 
     # Return response
