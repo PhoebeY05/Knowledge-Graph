@@ -70,25 +70,28 @@ const GraphPage = () => {
         value: 1,
       }));
 
-      // Group by (source,target) and merge unique labels
       const rawLinks: Link[] = data.links.map((link: Link) => ({
         source: link.source,
         target: link.target,
         label: link.label,
       }));
 
-      // Group by (source,target) and merge unique labels
-      const grouped = new Map<string, { source: string; target: string; labels: Set<string> }>();
+      // Collapse bidirectional edges into a single undirected pair
+      const pairs = new Map<string, { a: string; b: string; labels: Set<string> }>();
       for (const l of rawLinks) {
-        const key = `${l.source}→${l.target}`;
-        const entry = grouped.get(key) ?? { source: l.source, target: l.target, labels: new Set<string>() };
+        const a0 = String(l.source);
+        const b0 = String(l.target);
+        const [a, b] = a0 < b0 ? [a0, b0] : [b0, a0]; // stable orientation
+        const key = `${a}|${b}`;
+        const entry = pairs.get(key) ?? { a, b, labels: new Set<string>() };
         entry.labels.add(l.label);
-        grouped.set(key, entry);
+        pairs.set(key, entry);
       }
-      const links: Link[] = Array.from(grouped.values()).map(g => ({
-        source: g.source,
-        target: g.target,
-        label: Array.from(g.labels)[0],
+
+      const links: Link[] = Array.from(pairs.values()).map(p => ({
+        source: p.a,
+        target: p.b,
+        label: Array.from(p.labels)[0],
       }));
 
       setGraphData({ nodes, links });
@@ -267,13 +270,20 @@ const GraphPage = () => {
             const start = link.source as NodeObject;
             const end = link.target as NodeObject;
 
-            const x = ((start.x ?? 0) + (end.x ?? 0)) / 2;
-            const y = ((start.y ?? 0) + (end.y ?? 0)) / 2;
+            const x = ((start.x ?? 0) + (end.x ?? 0)) * 0.5;
+            const y = ((start.y ?? 0) + (end.y ?? 0)) * 0.5;
 
             ctx.font = `10px`;
             ctx.fillStyle = "#000";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
+
+            // Light halo for readability
+            ctx.strokeStyle = "rgba(255,255,255,0.9)";
+            ctx.lineWidth = 2;
+            ctx.strokeText((link as LinkObject).label, x, y);
+
+            ctx.fillStyle = "#000";
             ctx.fillText((link as LinkObject).label, x, y);
           }}
         />
