@@ -5,8 +5,8 @@ import shutil
 import os
 from dotenv import load_dotenv
 
-from paddle_ocr import ocr_extract_text  # your OCR function
-from ernie import process_text_to_graph   # your ERNIE function
+from paddle_ocr import ocr_extract_text  # OCR function
+from ernie import process_text_to_graph   # ERNIE function
 from neo4j import GraphDatabase
 
 os.makedirs("uploads", exist_ok=True)
@@ -16,7 +16,7 @@ app = FastAPI()
 # Allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or specify your frontend domain
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,10 +28,6 @@ NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-def reset_neo4j():
-    with driver.session() as session:
-        session.run("MATCH (n) DETACH DELETE n")
-    print("[INFO] Neo4j database reset: all nodes and relationships deleted.")
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):

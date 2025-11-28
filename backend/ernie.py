@@ -57,12 +57,10 @@ def extract_entities(text: str) -> dict:
         "x-bce-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
     }
 
-
     prompt = f"""
         Extract entities and relations from the following text. Return JSON only in this format:
 
         {{
-        "title": "...",
         "entities": [
             {{
             "id": "E1",
@@ -153,14 +151,13 @@ def process_text_to_graph(text: str):
 
     db_name = _safe_db_name(title)
 
-    # Ensure database exists (must run from 'system' db)
     try:
         with driver.session(database="system") as sys_sess:
             sys_sess.run(f"CREATE DATABASE `{db_name}` IF NOT EXISTS WAIT")
             print(f"[INFO] Database '{db_name}' ensured.")
     except Exception as e:
         print(f"[WARN] Could not ensure database '{db_name}': {e}. Falling back to default database.")
-        db_name = None  # use driver default db
+        db_name = None
 
     with driver.session(database=db_name) as session:
         session.execute_write(create_entities, entities)
@@ -174,4 +171,4 @@ def process_text_to_graph(text: str):
         """)
         for record in results:
             print(record)
-        return db_name or "neo4j"
+        return (db_name or "neo4j")  # return the actual db the frontend should query

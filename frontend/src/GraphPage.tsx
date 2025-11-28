@@ -70,10 +70,25 @@ const GraphPage = () => {
         value: 1,
       }));
 
-      const links: Link[] = data.links.map((link: Link) => ({
+      // Group by (source,target) and merge unique labels
+      const rawLinks: Link[] = data.links.map((link: Link) => ({
         source: link.source,
         target: link.target,
         label: link.label,
+      }));
+
+      // Group by (source,target) and merge unique labels
+      const grouped = new Map<string, { source: string; target: string; labels: Set<string> }>();
+      for (const l of rawLinks) {
+        const key = `${l.source}→${l.target}`;
+        const entry = grouped.get(key) ?? { source: l.source, target: l.target, labels: new Set<string>() };
+        entry.labels.add(l.label);
+        grouped.set(key, entry);
+      }
+      const links: Link[] = Array.from(grouped.values()).map(g => ({
+        source: g.source,
+        target: g.target,
+        label: Array.from(g.labels)[0],
       }));
 
       setGraphData({ nodes, links });
