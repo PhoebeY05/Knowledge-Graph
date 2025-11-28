@@ -27,16 +27,27 @@ driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 # -----------------------------
 
 def _safe_db_name(title: str) -> str:
-    # Neo4j db name: simple ascii letters/numbers, dots and dashes only
-    name = (title or "graph").lower()
-    # replace anything not [a-z0-9.-] with '-'
-    name = re.sub(r"(_|-|\s)+", " ", name).title().replace(" ", "")
-    # collapse multiple '-' and remove leading/trailing separators
-    name = re.sub(r"-+", "-", name).strip("-.")
-    # must start with a letter
+    """
+    Converts a string to a CamelCase safe database name:
+    - Removes all non-alphanumeric characters
+    - Converts words to CamelCase
+    - Ensures it starts with a letter
+    - Truncates to 60 characters
+    """
+    # Default title if empty
+    title = title or "graph"
+
+    # Split on any non-alphanumeric character
+    words = re.split(r'[^a-zA-Z0-9]+', title)
+
+    # Capitalize each word and join
+    name = ''.join(word.capitalize() for word in words if word)
+
+    # Ensure it starts with a letter
     if not name or not name[0].isalpha():
-        name = f"g-{name}" if name else "g-default"
-    # reasonable max length
+        name = f"G{name}" if name else "GDefault"
+
+    # Truncate to reasonable max length
     return name[:60]
 
 def _unique_db_name(base_name: str) -> str:
