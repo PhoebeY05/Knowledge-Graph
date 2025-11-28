@@ -3,10 +3,10 @@ import os
 import re
 from datetime import datetime, timezone
 from textwrap import wrap
+import time 
 
 import requests
 from dotenv import load_dotenv
-from neo4j import GraphDatabase
 
 # -----------------------------
 # Load environment variables
@@ -15,55 +15,36 @@ load_dotenv()
 
 API_URL = "https://aistudio.baidu.com/llm/lmapi/v3/chat/completions"
 TOKEN = os.getenv("AI_STUDIO_API_KEY")
-NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+# Model/context limits
+_TOKEN_LIMIT = 5120          # reported by API error
+_TOKEN_SAFETY = 400          # keep headroom for headers/serialization
+
+# --- chunking & merging helpers ---
+def _chunk_text(text: str, max_len: int = 20000):
+    """
+    Yield text chunks of length <= max_len, preferring to break on whitespace.
+    """
+    if not text:
+        return
+    n = len(text)
+    i = 0
+    while i < n:
+        end = min(i + max_len, n)
+        if end < n and not text[end - 1].isspace():
+            # backtrack to last whitespace within this window
+            ws = text.rfind(" ", i, end)
+            if ws != -1 and ws > i:
+                end = ws + 1
+        yield text[i:end]
+        i = end
+
+def _normalize_key(s: str | None):
+    return (s or "").strip().lower()
 
 # -----------------------------
-# Initialize clients
+# ERNIE helpers
 # -----------------------------
-driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-
-def _safe_db_name(title: str) -> str:
-    # Neo4j db name: simple ascii letters/numbers, dots and dashes only
-    name = (title or "graph").lower()
-    # replace anything not [a-z0-9.-] with '-'
-    name = re.sub(r"(_|-|\s)+", " ", name).title().replace(" ", "")
-    # collapse multiple '-' and remove leading/trailing separators
-    name = re.sub(r"-+", "-", name).strip("-.")
-    # must start with a letter
-    if not name or not name[0].isalpha():
-        name = f"g-{name}" if name else "g-default"
-    # reasonable max length
-    return name[:60]
-
-def _unique_db_name(base_name: str) -> str:
-    """
-    Ensure database name is unique by appending a numeric suffix (-2, -3, ...) if needed.
-    Checks existing databases via SHOW DATABASES in the system db.
-    """
-    try:
-        with driver.session(database="system") as sys_sess:
-            existing = set()
-            res = sys_sess.run("SHOW DATABASES YIELD name RETURN name")
-            for r in res:
-                existing.add(r["name"])
-    except Exception:
-        # If SHOW DATABASES fails, just return base_name and let creation handle conflicts
-        return base_name
-
-    if base_name not in existing:
-        return base_name
-
-    # Generate suffixes until an unused name is found; respect 60-char limit
-    idx = 2
-    while True:
-        candidate = f"{base_name}-{idx}"
-        candidate = candidate[:60]
-        if candidate not in existing:
-            return candidate
-        idx += 1
-
 def safe_parse_json(raw_output: str):
     """Extract JSON from ERNIE output safely, returns empty lists if parsing fails"""
     match = re.search(r"\{.*\}", raw_output, re.DOTALL)
@@ -74,42 +55,49 @@ def safe_parse_json(raw_output: str):
             return {"entities": [], "relations": []}
     return {"entities": [], "relations": []}
 
+# Build the exact prompt so we can measure overhead length reliably
+def _build_prompt(text: str) -> str:
+    # Compact prompt to minimize overhead
+    return f'''Extract entities and relations from the text and return ONLY JSON:
+{{
+"title": "...",
+"entities": [{{"id":"E1","type":"Organization|Person|Date|Money|Clause|Term|...","text":"...","canonical":"..."}} ],
+"relations": [{{"from":"E1","to":"E2","type":"employs|owes|mentions|amends|...","confidence":0.0,"evidence_span":"..."}} ]
+}}
+Text: "{text}"'''
+
+def _estimate_tokens(s: str) -> int:
+    # Heuristic: ~4 chars per token (conservative)
+    return max(1, (len(s) + 3) // 4)
+
+def _fit_text_to_token_budget(text: str) -> str:
+    """
+    Trim text so that _build_prompt(text) fits within _TOKEN_LIMIT - _TOKEN_SAFETY tokens.
+    """
+    if not text:
+        return text
+    # Tokens available for the 'text' portion (approx)
+    overhead_tokens = _estimate_tokens(_build_prompt(""))
+    budget_tokens = max(1000, _TOKEN_LIMIT - overhead_tokens - _TOKEN_SAFETY)
+    # Convert to a conservative char budget (3 chars per token)
+    char_budget = max(1000, budget_tokens * 3)
+    if len(text) > char_budget:
+        # cut at whitespace within budget
+        cut = text.rfind(" ", 0, char_budget)
+        text = text[: cut if cut > 0 else char_budget]
+    # Final guard: iterative shrink if still over
+    while _estimate_tokens(_build_prompt(text)) > (_TOKEN_LIMIT - _TOKEN_SAFETY) and len(text) > 1000:
+        text = text[: int(len(text) * 0.9)]
+    return text
+
 def extract_entities(text: str) -> dict:
     """
     Sends text to ERNIE API via requests, returns entities and relations as dict.
     """
-    headers = {
-        "Authorization": f"token {TOKEN}",
-        "Content-Type": "application/json",
-        "x-bce-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
-    }
+    MAX_RETRIES = 3
+    BACKOFF_FACTOR = 0.5
 
-    prompt = f"""
-        Extract entities and relations from the following text. Return JSON only in this format:
-
-        {{
-        "title": "...",
-        "entities": [
-            {{
-            "id": "E1",
-            "type": "Organization | Person | Date | Money | Clause | Term | ...",
-            "text": "...",
-            "canonical": "..."
-            }}
-        ],
-        "relations": [
-            {{
-            "from": "E1",
-            "to": "E2",
-            "type": "employs | owes | mentions | amends | ...",
-            "confidence": 0.0,
-            "evidence_span": "..."
-            }}
-        ]
-        }}
-
-        Text: "{text}"
-        """
+    prompt = _build_prompt(text)
 
     payload = {
         "model": "ernie-3.5-8k",
@@ -119,86 +107,106 @@ def extract_entities(text: str) -> dict:
         ]
     }
 
-    response = requests.post(API_URL, json=payload, headers=headers)
+    for attempt in range(MAX_RETRIES):
+        try:
+            # Recalculate the date header for every attempt to ensure freshness
+            headers = {
+                "Authorization": f"token {TOKEN}",
+                "Content-Type": "application/json",
+                "x-bce-date": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            }
 
-    if response.status_code != 200:
-        raise RuntimeError(f"ERNIE API failed: {response.status_code} {response.text}")
+            # Use the 'json' parameter for automatic JSON serialization and header setting
+            response = requests.post(API_URL, json=payload, headers=headers)
 
-    raw_output = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    if not raw_output:
-        return {"entities": [], "relations": []}
+            if response.status_code == 200:
+                raw_output = response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                if not raw_output:
+                    return {"entities": [], "relations": []}
+                return safe_parse_json(raw_output)
 
-    return safe_parse_json(raw_output)
-# -----------------------------
-# Neo4j ingestion
-# -----------------------------
-def create_entities(tx, entities):
-    for e in entities:
-        tx.run(
-            """
-            MERGE (ent:Entity {canonical: $canonical})
-            ON CREATE SET ent.type = $type, ent.text = $text
-            """,
-            canonical=e['canonical'],
-            type=e['type'],
-            text=e['text']
-        )
+            # Check for the specific clock skew/header error to allow retries
+            if response.status_code == 404 and "MissingDateHeader" in response.text:
+                if attempt < MAX_RETRIES - 1:
+                    wait_time = BACKOFF_FACTOR * (2 ** attempt)
+                    # Use time.sleep for exponential backoff before the next retry
+                    time.sleep(wait_time)
+                    continue
+            
+            # For unrecoverable errors or if retries are exhausted, raise the error
+            raise RuntimeError(f"ERNIE API failed: {response.status_code} {response.text}")
+
+        except requests.exceptions.RequestException as e:
+            # Handle connectivity or timeout errors
+            if attempt < MAX_RETRIES - 1:
+                wait_time = BACKOFF_FACTOR * (2 ** attempt)
+                time.sleep(wait_time)
+                continue
+            raise RuntimeError(f"ERNIE API failed after {MAX_RETRIES} attempts due to request exception: {e}")
+    
+    # Fallback return (should be unreachable if the final raise is hit)
+    return {"entities": [], "relations": []}
 
 
-def create_relations(tx, relations, entities):
-    entity_map = {e['id']: e['canonical'] for e in entities}
-    for r in relations:
-        from_canonical = entity_map.get(r.get('from'))
-        to_canonical = entity_map.get(r.get('to'))
-        if not from_canonical or not to_canonical:
+def extract_entities_chunked(text: str, max_len: int = 20000) -> dict:
+    """
+    Break text into chunks, call extract_entities per chunk, and merge results:
+    - entities deduped by canonical (fallback to text)
+    - relations remapped to combined entity ids
+    """
+    combined_entities: list[dict] = []
+    combined_relations: list[dict] = []
+    canonical_to_id: dict[str, str] = {}
+    first_title: str | None = None
+
+    # Use char chunking as a first pass; token budget fitting happens per chunk below
+    for chunk_idx, chunk in enumerate(_chunk_text(text, max_len=max_len)):
+        fit = _fit_text_to_token_budget(chunk)
+        if not fit:
             continue
-        tx.run(
-            """
-            MATCH (a:Entity {canonical: $from_canonical})
-            MATCH (b:Entity {canonical: $to_canonical})
-            MERGE (a)-[rel:RELATION {type: $type}]->(b)
-            ON CREATE SET rel.confidence = $confidence, rel.evidence = $evidence
-            """,
-            from_canonical=from_canonical,
-            to_canonical=to_canonical,
-            type=r.get('type', 'related'),
-            confidence=r.get('confidence', 0.0),
-            evidence=r.get('evidence_span', '')
-        )
+        res = extract_entities(fit)  # calls ERNIE API
+        if not first_title:
+            first_title = res.get("title")
+        entities = res.get("entities", []) or []
+        relations = res.get("relations", []) or []
 
-# -----------------------------
-# Main pipeline
-# -----------------------------
-def process_text_to_graph(text: str):
-    print("[INFO] Extracting entities and relations from text...")
-    result = extract_entities(text)
-    entities = result.get('entities', [])
-    relations = result.get('relations', [])
-    title = result.get('title', 'graph')
-    print(f"[INFO] Extracted {len(entities)} unique entities and {len(relations)} relations.")
+        local_to_combined: dict[str, str] = {}
 
-    # Compute a valid base db name and uniquify it if necessary
-    base_name = _safe_db_name(title)
-    db_name = _unique_db_name(base_name)
+        for e in entities:
+            canonical_key = _normalize_key(e.get("canonical") or e.get("text") or e.get("id"))
+            if not canonical_key:
+                continue
+            if canonical_key in canonical_to_id:
+                combined_id = canonical_to_id[canonical_key]
+            else:
+                base_local_id = str(e.get("id") or f"E{len(combined_entities)+1}")
+                combined_id = f"c{chunk_idx}_{base_local_id}"
+                canonical_to_id[canonical_key] = combined_id
+                combined_entities.append({
+                    "id": combined_id,
+                    "type": e.get("type", ""),
+                    "text": e.get("text", ""),
+                    "canonical": e.get("canonical", e.get("text", "")),
+                })
+            local_to_combined[str(e.get("id"))] = combined_id
 
-    try:
-        with driver.session(database="system") as sys_sess:
-            sys_sess.run(f"CREATE DATABASE `{db_name}` IF NOT EXISTS WAIT")
-            print(f"[INFO] Database '{db_name}' ensured.")
-    except Exception as e:
-        print(f"[WARN] Could not ensure database '{db_name}': {e}. Falling back to default database.")
-        db_name = None  # use driver default db
+        for r in relations:
+            src_local = str(r.get("from"))
+            dst_local = str(r.get("to"))
+            src_id = local_to_combined.get(src_local)
+            dst_id = local_to_combined.get(dst_local)
+            if not src_id or not dst_id:
+                continue
+            combined_relations.append({
+                "from": src_id,
+                "to": dst_id,
+                "type": r.get("type", "related"),
+                "confidence": r.get("confidence", 0.0),
+                "evidence_span": r.get("evidence_span", ""),
+            })
 
-    with driver.session(database=db_name) as session:
-        session.execute_write(create_entities, entities)
-        session.execute_write(create_relations, relations, entities)
-        print("[INFO] Entities and relations ingested into Neo4j.")
-
-        print("\n[INFO] Querying Neo4j for verification...\n")
-        results = session.run("""
-            MATCH (a:Entity)-[r:RELATION]->(b:Entity)
-            RETURN a.text AS from_text, r.type AS rel_type, b.text AS to_text, r.confidence AS confidence, r.evidence AS evidence
-        """)
-        for record in results:
-            print(record)
-        return db_name or "neo4j"
+    return {
+        "title": first_title or "graph",
+        "entities": combined_entities,
+        "relations": combined_relations,
+    }

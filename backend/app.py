@@ -1,15 +1,20 @@
 # backend/main.py
-from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-import shutil
 import os
-from dotenv import load_dotenv
+import re
+import shutil
+from datetime import datetime
 
-from paddle_ocr import ocr_extract_text  # OCR function
-from ernie import process_text_to_graph   # ERNIE function
+from dotenv import load_dotenv
+from ernie import extract_entities_chunked  # ERNIE function
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from graph import process_text_to_graph, retrieve_graph  # Neo4j functions
 from neo4j import GraphDatabase
+from paddle_ocr import ocr_extract_text  # OCR function
 
 os.makedirs("uploads", exist_ok=True)
+os.makedirs("output", exist_ok=True)  # new: where extracted text files are saved
 
 app = FastAPI()
 
@@ -22,52 +27,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-load_dotenv()
-
-NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     # Save uploaded file
     file_path = f"uploads/{file.filename}"
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+    
+    # Deterministic output path for extracted text
+    base = os.path.splitext(os.path.basename(file.filename))[0] or "document"
+    safe_base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-_.")
+    out_name = f"{safe_base}.txt"
+    out_path = os.path.join("output", out_name)
 
-    # Step 1: OCR extract text
-    extracted_text = ocr_extract_text(file_path)
+    # Step 1: OCR extract text (only if not already extracted)
+    if os.path.isfile(out_path):
+        print(f"[INFO] Using existing extracted text: {out_name}")
+        with open(out_path, "r", encoding="utf-8") as f:
+            extracted_text = f.read()
+    else:
+        print("[INFO] Extracting text from file...")
+        extracted_text = ocr_extract_text(file_path)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(extracted_text)
 
-    # Step 2: Process text with ERNIE
-    database_title = process_text_to_graph(extracted_text)
+    # Step 2: ERNIE extract entities and relations
+    print("[INFO] Extracting entities and relations from text...")
+    result = extract_entities_chunked(extracted_text, max_len=20000)
+
+    # Step 3: Process text with Neo4j
+    print("[INFO] Processing text with Neo4j...")
+    database_title = process_text_to_graph(result)
 
     # Return response
     return {
         "title": database_title,
         "text_preview": extracted_text[:500],  # first 500 chars
+        "text_file": f"/download/{out_name}",  # download path
         "message": "OCR + ERNIE processing complete!"
     }
+
+@app.get("/download/{filename}")
+def download_extracted_text(filename: str):
+    # basic sanitization to prevent path traversal
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+    path = os.path.join("output", filename)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="File not found.")
+    return FileResponse(path, media_type="text/plain", filename=filename)
 
 @app.get("/graph")
 def get_graph(title: str):
     title = title.strip()
     print(f"[INFO] Querying Neo4j for graph '{title}'...")
-    query = f"""
-    MATCH (a:Entity)-[r:RELATION]->(b:Entity)
-    RETURN a.canonical AS from, r.type AS type, b.canonical AS to
-    """
-    with driver.session(database=title) as session:
-        results = session.run(query)
-        nodes = {}
-        edges = []
-        id = 0
-        for record in results:
-            # Add nodes
-            for n in [record["from"], record["to"]]:
-                if n not in nodes:
-                    nodes[n] = {"id": id , "label": n}
-                    id += 1
-            # Add edge
-            edges.append({"source": record["from"], "target": record["to"], "label": record["type"]})
-    return {"nodes": list(nodes.values()), "links": edges}
+    return retrieve_graph(title)
