@@ -102,16 +102,16 @@ const GraphPage = () => {
   };
 
   const handleClick = useCallback((node: NodeObject) => {
-    const distance = 40;
-    const distRatio = 1 + distance / Math.hypot(node.x ?? 0, node.y ?? 0);
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
 
-    // Fix operator precedence: apply distRatio to node.x/y
-    fgRef.current?.centerAt(
-      (node.x ?? 0) * distRatio,
-      (node.y ?? 0) * distRatio
-    );
+    // Center on the node (animate)
+    fgRef.current?.centerAt(x, y, 600);
 
-    fgRef.current?.zoom(5);
+    // Zoom in (animate) relative to current zoom
+    const current = fgRef.current?.zoom() ?? 1;
+    const target = Math.min(4, current < 1.6 ? 2.2 : current * 1.5);
+    fgRef.current?.zoom(target, 600);
   }, [fgRef]);
 
 
