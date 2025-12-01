@@ -60,6 +60,16 @@ Backend
    uvicorn app:app --reload
    ```
 
+Neo4j
+1. Download [Neo4j Desktop](https://neo4j.com/download/?utm_source=GSearch&utm_medium=PaidSearch&utm_campaign=Evergreen&utm_content=APAC-Search-SEMBrand-Evergreen-None-SEM-SEM-NonABM&utm_term=download%20neo4j&utm_adgroup=download&gad_source=1&gad_campaignid=20769286994&gbraid=0AAAAADk9OYrdv7YFGfzvNI67cuboxYR9q&gclid=CjwKCAiA86_JBhAIEiwA4i9Ju1RMX3ogQktaLBKpixhMsb7psrXHx0zwkS901OZcyT6svZP5mo9MvRoCjbwQAvD_BwE)
+
+2. Replace the below code snippet in `graph.py` if needed
+```
+NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+```
+
+
 ## API Endpoints
 
 - POST `/upload`
