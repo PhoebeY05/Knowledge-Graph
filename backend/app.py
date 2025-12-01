@@ -9,7 +9,8 @@ from ernie import extract_entities_chunked  # ERNIE function
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from graph import process_text_to_graph, retrieve_graph  # Neo4j functions
+from graph import (get_all_databases, process_text_to_graph,  # Neo4j functions
+                   retrieve_graph)
 from neo4j import GraphDatabase
 from paddle_ocr import ocr_extract_text  # OCR function
 
@@ -82,3 +83,7 @@ def get_graph(title: str):
     title = title.strip()
     print(f"[INFO] Querying Neo4j for graph '{title}'...")
     return retrieve_graph(title)
+
+@app.get("/sidebar")
+def get_sidebar():
+    return get_all_databases()

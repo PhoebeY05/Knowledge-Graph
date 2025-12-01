@@ -1,5 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Input } from "@/components/ui/input";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ForceGraph2D, {
@@ -8,7 +10,6 @@ import ForceGraph2D, {
   type NodeObject,
 } from "react-force-graph-2d";
 import { useParams } from "react-router-dom";
-import { Input } from "@/components/ui/input";
 
 type Node = { id: string; label: string };
 type GraphNode = { id: string; text: string; value: number };
@@ -228,8 +229,11 @@ const GraphPage = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search bar */}
-      <div className="p-2 bg-gray-100 flex items-center">
+      {/* Toolbar: Sidebar toggle + search */}
+      <div className="p-2 bg-gray-100 flex items-center gap-2">
+        {/* Sidebar toggle button */}
+        <SidebarTrigger />
+        {/* Search input fills remaining space */}
         <Input
           type="text"
           value={searchQuery}
@@ -237,12 +241,6 @@ const GraphPage = () => {
           placeholder="Search nodes or links..."
           className="border rounded px-2 py-1 w-full"
         />
-        {/* <button
-          onClick={() => handleSearch(searchQuery)}
-          className="ml-2 px-3 py-1 bg-blue-500 text-white rounded"
-        >
-          Search
-        </button> */}
       </div>
 
       {loading ? (
@@ -340,7 +338,7 @@ const GraphPage = () => {
 
             ctx.fillStyle =
               highlightedNodes.size > 0 &&
-              highlightedNodes.has(node.id as string)
+                highlightedNodes.has(node.id as string)
                 ? "#ff0000"
                 : colors[colorIndex];
 

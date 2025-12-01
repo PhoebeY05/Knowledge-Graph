@@ -1,10 +1,8 @@
-import json
 import os
 import re
 from datetime import datetime, timezone
 from textwrap import wrap
 
-import requests
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
@@ -167,3 +165,10 @@ def retrieve_graph(title: str):
             # Add edge
             edges.append({"source": record["from"], "target": record["to"], "label": record["type"]})
     return {"nodes": list(nodes.values()), "links": edges}
+
+def get_all_databases():
+    with driver.session(database="system") as sys_sess:
+        results = sys_sess.run("SHOW DATABASES")
+        names = [r["name"] for r in results]
+        # Return filtered list; don't use list.remove (it returns None)
+        return [n for n in names if n != "system" and n != "neo4j"]

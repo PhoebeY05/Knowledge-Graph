@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import axios from "axios";
 import { useRef, useState } from "react";
 
@@ -93,8 +94,8 @@ const UploadPage = () => {
       console.error(err);
       setErrorMsg(
         err?.response?.data?.message ||
-          err?.message ||
-          "Failed to upload file.",
+        err?.message ||
+        "Failed to upload file.",
       );
       return;
     } finally {
@@ -104,6 +105,10 @@ const UploadPage = () => {
 
   return (
     <div className="min-h-screen w-full antialiased bg-gradient-to-br from-blue-50 to-indigo-50">
+      {/* Toolbar: sidebar toggle */}
+      <div className="p-2 bg-white-100 flex items-center">
+        <SidebarTrigger />
+      </div>
       <div className="mx-auto w-full max-w-6xl px-6 py-10 md:py-14">
         <Card className="w-full rounded-2xl border border-gray-200/60 bg-white/85 shadow-xl backdrop-blur">
           <CardHeader className="pb-0">
@@ -136,8 +141,8 @@ const UploadPage = () => {
               onChange={handleFileChange}
               className="hidden"
               disabled={uploading}
-              // accept attribute optional; uncomment to restrict types:
-              // accept=".pdf,.png,.jpg,.jpeg"
+            // accept attribute optional; uncomment to restrict types:
+            // accept=".pdf,.png,.jpg,.jpeg"
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12">
@@ -150,7 +155,7 @@ const UploadPage = () => {
                   <ul className="mt-3 list-disc pl-5 text-sm md:text-base text-gray-700 space-y-1.5">
                     <li>Click the dropzone or the button to pick a file.</li>
                     <li>We’ll process the document and build the graph.</li>
-                    <li>Large files may take up to 30 minutes to upload.</li>
+                    <li>{"Large files (> 20,000 characters) may take up to 30 minutes to upload."}</li>
                   </ul>
                 </div>
 
