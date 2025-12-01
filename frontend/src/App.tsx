@@ -3,7 +3,6 @@ import { HashRouter, Route, Routes } from "react-router-dom";
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "./components/AppSidebar";
 import GraphPage from "./pages/GraphPage";
@@ -16,11 +15,6 @@ function App() {
         <div className="flex w-full">
           <AppSidebar />
           <SidebarInset className="flex-1">
-            {/* Toggle button to collapse/expand the sidebar */}
-            <div className="p-2">
-              <SidebarTrigger />
-            </div>
-
             {/* ...existing content wrapper... */}
             <div className="flex justify-center">
               {/* constrained, responsive content area that will be centered */}
