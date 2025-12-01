@@ -111,6 +111,13 @@ def create_relations(tx, relations, entities):
             evidence=r.get('evidence_span', '')
         )
 
+def _clear_neo4j_database():
+    """
+    Remove all nodes and relationships from the target database.
+    """
+    with driver.session(database="neo4j") as session:
+        print(f"[INFO] Clearing database contents for 'neo4j'...")
+        session.run("MATCH (n) DETACH DELETE n")
 # -----------------------------
 # Main pipeline
 # -----------------------------
@@ -123,6 +130,8 @@ def process_text_to_graph(result: str):
     # Compute a valid base db name and uniquify it if necessary
     base_name = _safe_db_name(title)
     db_name = _unique_db_name(base_name)
+
+    _clear_neo4j_database()
 
     try:
         with driver.session(database="system") as sys_sess:
