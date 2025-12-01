@@ -17,6 +17,8 @@ const UploadPage = () => {
   const [isDragging, setIsDragging] = useState(false); // new drag state
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] || null);
@@ -70,7 +72,7 @@ const UploadPage = () => {
     setErrorMsg("");
 
     try {
-      const res = await axios.post("http://localhost:8000/upload", formData, {
+      const res = await axios.post(`${API_BASE_URL}/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 

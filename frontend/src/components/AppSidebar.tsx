@@ -20,6 +20,8 @@ import {
   CollapsibleTrigger,
 } from "./ui/collapsible";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
 export function AppSidebar() {
   const [graphs, setGraphs] = useState<string[]>([]);
 
@@ -27,7 +29,7 @@ export function AppSidebar() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await axios.get("http://localhost:8000/sidebar");
+        const res = await axios.get(`${API_BASE_URL}/sidebar`);
         const data = Array.isArray(res.data) ? res.data : [];
         if (!cancelled) setGraphs(data);
       } catch (e) {

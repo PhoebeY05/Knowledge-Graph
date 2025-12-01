@@ -86,5 +86,6 @@ NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 
 ## Notes
 
-- Neo4j configuration & ERNIE API key is loaded from environment variables (`NEO4J_PASSWORD` and `AI_STUDIO_API_KEY`).
+- Neo4j configuration & ERNIE API key is loaded from backend environment variables (`NEO4J_PASSWORD` and `AI_STUDIO_API_KEY`).
+- Backend URL is loaded from frontend environment variables (`VITE_API_BASE_URL`).
 - The backend limits request size to fit ERNIE’s input constraints by chunking and trimming text.
