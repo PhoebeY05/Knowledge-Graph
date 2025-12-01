@@ -87,7 +87,7 @@ const GraphPage = () => {
   // Fetch graph data
   const fetchGraph = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}//graph/?title=` + title);
+      const res = await axios.get(`${API_BASE_URL}/graph/?title=` + title);
       const data = res.data;
 
       const nodes: GraphNode[] = data.nodes.map((node: Node) => ({
