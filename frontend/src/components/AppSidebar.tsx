@@ -67,7 +67,10 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {graphs.map((db) => (
+                        {graphs.length == 0 ? <SidebarMenuSubItem>
+                          <Link to={`/graph/${encodeURIComponent("neo4j")}`}>neo4j</Link>
+                        </SidebarMenuSubItem> : 
+                        graphs.map((db) => (
                           <SidebarMenuSubItem key={db}>
                             <Link to={`/graph/${encodeURIComponent(db)}`}>{db}</Link>
                           </SidebarMenuSubItem>
