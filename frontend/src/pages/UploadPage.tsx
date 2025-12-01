@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import axios from "axios";
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const UploadPage = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -17,6 +18,7 @@ const UploadPage = () => {
   const [isDragging, setIsDragging] = useState(false); // new drag state
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const navigate = useNavigate();
   const API_BASE_URL =
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -83,8 +85,10 @@ const UploadPage = () => {
         if (fileInputRef.current) fileInputRef.current.value = "";
         if (!redirecting) {
           setRedirecting(true);
-          // Redirect immediately and replace history entry
-          window.location.replace("/graph/" + res.data.title);
+          // Client-side navigation (works with HashRouter on Render)
+          navigate(`/graph/${encodeURIComponent(res.data.title)}`, {
+            replace: true,
+          });
           return;
         }
       } else {
@@ -96,8 +100,8 @@ const UploadPage = () => {
       console.error(err);
       setErrorMsg(
         err?.response?.data?.message ||
-          err?.message ||
-          "Failed to upload file.",
+        err?.message ||
+        "Failed to upload file.",
       );
       return;
     } finally {
@@ -143,8 +147,8 @@ const UploadPage = () => {
               onChange={handleFileChange}
               className="hidden"
               disabled={uploading}
-              // accept attribute optional; uncomment to restrict types:
-              // accept=".pdf,.png,.jpg,.jpeg"
+            // accept attribute optional; uncomment to restrict types:
+            // accept=".pdf,.png,.jpg,.jpeg"
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12">
