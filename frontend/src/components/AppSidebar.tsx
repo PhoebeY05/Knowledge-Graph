@@ -20,7 +20,8 @@ import {
   CollapsibleTrigger,
 } from "./ui/collapsible";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export function AppSidebar() {
   const [graphs, setGraphs] = useState<string[]>([]);
@@ -37,7 +38,9 @@ export function AppSidebar() {
         if (!cancelled) setGraphs([]);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -67,14 +70,21 @@ export function AppSidebar() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <SidebarMenuSub>
-                        {graphs.length == 0 ? <SidebarMenuSubItem>
-                          <Link to={`/graph/${encodeURIComponent("neo4j")}`}>neo4j</Link>
-                        </SidebarMenuSubItem> : 
-                        graphs.map((db) => (
-                          <SidebarMenuSubItem key={db}>
-                            <Link to={`/graph/${encodeURIComponent(db)}`}>{db}</Link>
+                        {graphs.length == 0 ? (
+                          <SidebarMenuSubItem>
+                            <Link to={`/graph/${encodeURIComponent("neo4j")}`}>
+                              neo4j
+                            </Link>
                           </SidebarMenuSubItem>
-                        ))}
+                        ) : (
+                          graphs.map((db) => (
+                            <SidebarMenuSubItem key={db}>
+                              <Link to={`/graph/${encodeURIComponent(db)}`}>
+                                {db}
+                              </Link>
+                            </SidebarMenuSubItem>
+                          ))
+                        )}
                       </SidebarMenuSub>
                     </CollapsibleContent>
                   </SidebarMenuItem>

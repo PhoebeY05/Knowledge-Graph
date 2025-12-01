@@ -17,8 +17,8 @@ const UploadPage = () => {
   const [isDragging, setIsDragging] = useState(false); // new drag state
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-
+  const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] || null);
@@ -96,8 +96,8 @@ const UploadPage = () => {
       console.error(err);
       setErrorMsg(
         err?.response?.data?.message ||
-        err?.message ||
-        "Failed to upload file.",
+          err?.message ||
+          "Failed to upload file.",
       );
       return;
     } finally {
@@ -143,8 +143,8 @@ const UploadPage = () => {
               onChange={handleFileChange}
               className="hidden"
               disabled={uploading}
-            // accept attribute optional; uncomment to restrict types:
-            // accept=".pdf,.png,.jpg,.jpeg"
+              // accept attribute optional; uncomment to restrict types:
+              // accept=".pdf,.png,.jpg,.jpeg"
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12">
@@ -157,7 +157,11 @@ const UploadPage = () => {
                   <ul className="mt-3 list-disc pl-5 text-sm md:text-base text-gray-700 space-y-1.5">
                     <li>Click the dropzone or the button to pick a file.</li>
                     <li>We’ll process the document and build the graph.</li>
-                    <li>{"Large files (> 20,000 characters) may take up to 30 minutes to upload."}</li>
+                    <li>
+                      {
+                        "Large files (> 20,000 characters) may take up to 30 minutes to upload."
+                      }
+                    </li>
                   </ul>
                 </div>
 

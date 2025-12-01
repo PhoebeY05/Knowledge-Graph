@@ -15,7 +15,8 @@ type Node = { id: string; label: string };
 type GraphNode = { id: string; text: string; value: number };
 type Link = { source: string; target: string; label: string };
 type GraphData = { nodes: GraphNode[]; links: Link[] };
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 // Custom collide force without d3-force
 function makeCollisionForce(getRadius: (n: any) => number, strength = 0.8) {
@@ -86,9 +87,7 @@ const GraphPage = () => {
   // Fetch graph data
   const fetchGraph = async () => {
     try {
-      const res = await axios.get(
-        `${API_BASE_URL}//graph/?title=` + title,
-      );
+      const res = await axios.get(`${API_BASE_URL}//graph/?title=` + title);
       const data = res.data;
 
       const nodes: GraphNode[] = data.nodes.map((node: Node) => ({
@@ -339,7 +338,7 @@ const GraphPage = () => {
 
             ctx.fillStyle =
               highlightedNodes.size > 0 &&
-                highlightedNodes.has(node.id as string)
+              highlightedNodes.has(node.id as string)
                 ? "#ff0000"
                 : colors[colorIndex];
 
