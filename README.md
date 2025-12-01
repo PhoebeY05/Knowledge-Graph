@@ -2,6 +2,8 @@
 
 Upload any PDF or image file to obtain an in-depth analysis of its contents in the form of an entity-relationship graph.
 
+**Disclaimer**: Deployed website only supports 1 graph at a time while hosting locally allows unnlimited graphs
+
 ## Features
 
 - Upload files
@@ -86,6 +88,6 @@ NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 
 ## Notes
 
-- Neo4j configuration & ERNIE API key is loaded from backend environment variables (`NEO4J_PASSWORD` and `AI_STUDIO_API_KEY`).
-- Backend URL is loaded from frontend environment variables (`VITE_API_BASE_URL`).
+- Neo4j configuration & ERNIE API key is loaded from backend environment variables
+- Backend URL is loaded from frontend environment variables
 - The backend limits request size to fit ERNIE’s input constraints by chunking and trimming text.
